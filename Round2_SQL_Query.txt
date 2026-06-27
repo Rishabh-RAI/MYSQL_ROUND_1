@@ -1,0 +1,46 @@
+WITH cte AS (
+    SELECT
+        resource_id,
+        date,
+        start_time,
+        end_time,
+        is_clock_in,
+        is_clock_out,
+
+        CASE
+            WHEN julianday(end_time) >= julianday(start_time) THEN
+                (julianday(end_time) - julianday(start_time)) * 24
+
+            WHEN julianday(datetime(end_time,'+1 day')) >= julianday(start_time)
+                 AND (julianday(start_time) - julianday(end_time)) < 1 THEN
+                (julianday(datetime(end_time,'+1 day')) - julianday(start_time)) * 24
+
+            ELSE NULL
+        END AS active_hours,
+
+        CASE
+            WHEN julianday(end_time) >= julianday(start_time)
+                 OR (
+                    julianday(datetime(end_time,'+1 day')) >= julianday(start_time)
+                    AND (julianday(start_time) - julianday(end_time)) < 1
+                 )
+            THEN 0
+            ELSE 1
+        END AS invalid_interval
+
+    FROM test_de
+)
+
+SELECT
+    resource_id,
+    date,
+    MAX(CASE WHEN is_clock_in = 1 THEN start_time END) AS clock_in_time,
+    MAX(CASE WHEN is_clock_out = 1 THEN end_time END) AS final_clock_out_time,
+    ROUND(COALESCE(SUM(active_hours),0),2) AS total_active_hours,
+    CASE
+        WHEN SUM(invalid_interval) > 0 THEN 'Invalid Interval'
+        ELSE 'Valid'
+    END AS status
+FROM cte
+GROUP BY resource_id, date
+ORDER BY resource_id, date;
